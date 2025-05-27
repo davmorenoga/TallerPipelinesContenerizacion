@@ -1,0 +1,31 @@
+name: Load SQL Data into PostgreSQL
+
+on:
+  workflow_dispatch:
+
+jobs:
+  load-sql:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      - name: Copy SQL files to EC2
+        run: |
+          scp -o StrictHostKeyChecking=no ./scripts/*.sql ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/home/${{ secrets.EC2_USER }}/
+
+      - name: Execute SQL files inside the container
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+            for sql_file in /home/${{ secrets.EC2_USER }}/*.sql; do
+              docker cp $sql_file postgresql-dev:/tmp/
+              docker exec -i postgresql-dev psql -U ${{ secrets.POSTGRES_USER }} -d ${{ secrets.POSTGRES_DB }} -f /tmp/$(basename $sql_file)
+            done
+          EOF
